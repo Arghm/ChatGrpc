@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option csharp_namespace = "gRPCServiceApp.Protos";
+
+package Chatter;
+
+service Chatter {
+  rpc MessengerService (stream StreamMessage) returns (stream StreamMessage);
+}
+
+message StreamMessage{ 
+    string username = 1;
+    string content = 2;
+}
