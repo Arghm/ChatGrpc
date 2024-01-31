@@ -1,14 +1,33 @@
 syntax = "proto3";
 
-option csharp_namespace = "gRPCServiceApp.Protos";
+option csharp_namespace = "ChatGrpcServiceApp";
 
-package Chatter;
+package ChatGrpc;
 
 service Chatter {
-  rpc MessengerService (stream StreamMessage) returns (stream StreamMessage);
+  rpc MessangerProcess (stream StreamOutMessage) returns (stream StreamIncMessage);
+  rpc RegisterUser (RegisterUserRequest) returns (RegisterUserResponse);
 }
 
-message StreamMessage{ 
+message StreamOutMessage{ 
     string username = 1;
+    bool isServerMessage = 2;
+    string content = 3;
+    string token = 4;
+}
+
+message StreamIncMessage{ 
+    bool isServerMessage = 1;
     string content = 2;
+}
+
+message RegisterUserRequest{
+    string username = 1;
+}
+
+message RegisterUserResponse{
+    bool isSuccess = 1;
+    string username = 2;
+    string registerMessage = 3;
+    string token = 4;
 }

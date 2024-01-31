@@ -2,7 +2,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using ChatGrpc.Server.Host;
 using ChatGrpc.Server.Host.Entities;
-using gRPCServiceApp.Protos;
+using ChatGrpcServiceApp;
 
 namespace ChatGrpc.Server.Host.Services;
 
@@ -12,37 +12,36 @@ public class ChatterService : Chatter.ChatterBase
 
     private readonly ILogger<ChatterService> _logger;
     private readonly IProcessMessageService _messageService;
-    private readonly MessageEventService _messageEventService;
+    private readonly IUserService _userService;
 
-    private IServerStreamWriter<StreamMessage> _responseStream;
+    private IServerStreamWriter<StreamIncMessage> _responseStream;
     private bool _isResponseReady = false;
 
     private string _userName;
     public ChatterService(
         ILogger<ChatterService> logger,
         IProcessMessageService messageService,
-        MessageEventService messageEventService)
+        IUserService userService)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
-        _messageEventService = messageEventService ?? throw new ArgumentNullException(nameof(messageEventService));
+        _userService = userService ?? throw new ArgumentNullException(nameof(messageService));
     }
 
-    public override async Task MessengerService(IAsyncStreamReader<StreamMessage> requestStream,
-    IServerStreamWriter<StreamMessage> responseStream,
+    public override async Task MessangerProcess(IAsyncStreamReader<StreamOutMessage> requestStream,
+    IServerStreamWriter<StreamIncMessage> responseStream,
     ServerCallContext context)
     {
         // считываем вход€щие сообщени€ в фоновой задаче
         var readTask = Task.Run(async () =>
         {
-            await foreach (StreamMessage message in requestStream.ReadAllAsync())
+            await foreach (StreamOutMessage message in requestStream.ReadAllAsync())
             {
-                _userName = message.Username;
-                await _messageService.ProcessClientMessage(message);
+                await ProcessMessage(message);
             }
         });
 
-        _messageEventService.Broadcast += SendResponseToClient;
+        UserJoinChat();
 
         _responseStream = responseStream;
         _isResponseReady = true;
@@ -58,17 +57,85 @@ public class ChatterService : Chatter.ChatterBase
         }
         finally
         {
-            _messageEventService.Broadcast -= SendResponseToClient;
-            await _messageService.ProcessClientMessage(new StreamMessage { Username = _serverName, Content = $"{_userName} left chat" });
+            await UserLeftChat();
         }
     }
 
-    public async Task SendResponseToClient(StreamMessage message)
+    public override async Task<RegisterUserResponse> RegisterUser(RegisterUserRequest registerUserRequest, ServerCallContext context)
+    {
+        if (string.IsNullOrEmpty(registerUserRequest.Username))
+            return new RegisterUserResponse
+            {
+                IsSuccess = false,
+                Username = registerUserRequest.Username,
+                RegisterMessage = "Name cannot be empty",
+            };
+
+        return MapToRegisterResponse(registerUserRequest.Username, _userService.TryRegisterUserName(registerUserRequest.Username));
+    }
+
+    public async Task SendResponseToClient(StreamIncMessage message)
     {
         if (_isResponseReady &&
             _responseStream != null)
         {
             await _responseStream.WriteAsync(message);
         }
+    }
+
+    private Task ProcessMessage(StreamOutMessage message)
+    {
+        if (!ValidateMessage(message))
+        {
+            return Task.CompletedTask;
+        }
+
+        if (message.IsServerMessage)
+        {
+            _userName = message.Username;
+        }
+
+        return _messageService.ProcessClientMessage(message);
+    }
+
+    private Task UserLeftChat()
+    {
+        //_messageEventService.Broadcast -= SendResponseToClient;
+        _messageService.UnsubscribeUser(SendResponseToClient);
+        UnregisterUser();
+
+        return _messageService.ProcessClientMessage(new StreamOutMessage
+        {
+            Username = _serverName,
+            Content = $"{_userName} left chat",
+            IsServerMessage = true,
+        });
+    }
+
+    private void UserJoinChat()
+    {
+        //_messageEventService.Broadcast += SendResponseToClient;
+        _messageService.SubscribeUser(SendResponseToClient);
+    }
+
+    private void UnregisterUser()
+    {
+        _userService.UnregisterUser(_userName);
+    }
+
+    private bool ValidateMessage(StreamOutMessage message)
+    {
+        return _userService.ValidateToken(message.Username, message.Token);
+    }
+
+    private RegisterUserResponse MapToRegisterResponse(string userName, RegisterResult result)
+    {
+        return new RegisterUserResponse
+        {
+            IsSuccess = result.IsSuccess,
+            RegisterMessage = result.Message,
+            Username = userName,
+            Token = result.Token,
+        };
     }
 }

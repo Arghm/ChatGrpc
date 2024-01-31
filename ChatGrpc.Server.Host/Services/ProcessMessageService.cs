@@ -1,5 +1,6 @@
 ﻿using ChatGrpc.Server.Host.Entities;
-using gRPCServiceApp.Protos;
+using ChatGrpcServiceApp;
+using static ChatGrpc.Server.Host.Services.MessageEventService;
 
 namespace ChatGrpc.Server.Host.Services
 {
@@ -7,17 +8,42 @@ namespace ChatGrpc.Server.Host.Services
     {
         private readonly ILogger<ProcessMessageService> _logger;
         private readonly MessageEventService _messageEventService;
-        public ProcessMessageService(ILogger<ProcessMessageService> logger, MessageEventService messageEventService)
+        public ProcessMessageService(ILogger<ProcessMessageService> logger, 
+            MessageEventService messageEventService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _messageEventService = messageEventService ?? throw new ArgumentNullException(nameof(messageEventService));
         }
 
-        public Task ProcessClientMessage(StreamMessage message)
+        /// <inheritdoc/>
+        public Task ProcessClientMessage(StreamOutMessage message)
         {
-            Console.WriteLine($"{message.Username}: {message.Content}");
-
-            return _messageEventService.BroadcastInvoke(message);
+            var incMessage = Map(message);
+            Console.WriteLine(incMessage);
+            return _messageEventService.BroadcastInvoke(incMessage);
         }
+
+        /// <inheritdoc/>
+        public void SubscribeUser(SendMessage sendMessage)
+        {
+            _messageEventService.Broadcast += sendMessage;
+        }
+
+        /// <inheritdoc/>
+        public void UnsubscribeUser(SendMessage delegateSendMessage)
+        {
+            _messageEventService.UnsubscribeUser(delegateSendMessage);
+        }
+
+        private StreamIncMessage Map(StreamOutMessage source)
+        {
+            string senderName = source.IsServerMessage ? "Server" : source.Username;
+            return new StreamIncMessage
+            {
+                IsServerMessage = source.IsServerMessage,
+                Content = $"{senderName}: {source.Content}"
+            };
+        }
+
     }
 }

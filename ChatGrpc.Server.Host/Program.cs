@@ -16,6 +16,7 @@ public class Program
         // Add services to the container.
         builder.Services.AddGrpc();
         builder.Services.AddTransient<IProcessMessageService, ProcessMessageService>();
+        builder.Services.AddSingleton<IUserService, UserService>();
         builder.Services.AddSingleton<MessageEventService>();
 
         var app = builder.Build();

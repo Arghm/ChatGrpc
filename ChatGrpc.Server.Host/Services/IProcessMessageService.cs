@@ -1,5 +1,6 @@
 ﻿using ChatGrpc.Server.Host.Entities;
-using gRPCServiceApp.Protos;
+using ChatGrpcServiceApp;
+using static ChatGrpc.Server.Host.Services.MessageEventService;
 
 namespace ChatGrpc.Server.Host.Services
 {
@@ -13,6 +14,16 @@ namespace ChatGrpc.Server.Host.Services
         /// </summary>
         /// <param name="message"></param>
         /// <returns>Delivery result</returns>
-        Task ProcessClientMessage(StreamMessage message);
+        Task ProcessClientMessage(StreamOutMessage message);
+
+        /// <summary>
+        /// Subscribe for braodcast event.
+        /// </summary>
+        void SubscribeUser(SendMessage sendMessage);
+
+        /// <summary>
+        /// Unsubscribe from braodcast event.
+        /// </summary>
+        void UnsubscribeUser(SendMessage delegateSendMessage);
     }
 }

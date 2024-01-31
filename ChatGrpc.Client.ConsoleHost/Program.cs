@@ -1,28 +1,39 @@
-﻿using ChatGrpcClient.Services;
+﻿using ChatGrpc.Client.App.Entities;
+using ChatGrpcClient.Entities;
+using ChatGrpcClient.Services;
+using ChatGrpcServiceApp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace ChatGrpc.Client.Host
 {
     internal class Program
     {
+        static string _userName = string.Empty;
+        static ConsolePrefs _consoleConfig;
+        static GrpcClientSettings _clientConfig;
+
         public static async Task Main(string[] args)
         {
             var configuration = Configure();
             IoC.ConfigureServices(configuration);
             ConfigureLogger();
 
-            Console.WriteLine("Enter user name:");
-            string userName = Console.ReadLine() ?? "anon";
+            // get configs
+            _consoleConfig = IoC.Services.GetService<IOptions<ConsolePrefs>>()?.Value ?? throw new ArgumentNullException(nameof(IOptions<ConsolePrefs>));
+            _clientConfig = IoC.Services.GetService<IOptions<GrpcClientSettings>>()?.Value ?? throw new ArgumentNullException(nameof(IOptions<GrpcClientSettings>));
+            ChangeConsoleTitle();
 
-            string prefix = userName + ": ";
-            await using (GrpcClientService service = IoC.Services.GetService<GrpcClientService>() ?? throw new ArgumentNullException(nameof(GrpcClientService)))
+            await using (ChatGrpcClientService service = IoC.Services.GetService<ChatGrpcClientService>() ?? throw new ArgumentNullException(nameof(ChatGrpcClientService)))
             {
-                await service.Start(userName);
+                await ConnectToServer(service);
+                _userName = await RegisterUser(service);
+                await service.Start(_userName);
+
+                ChangeConsoleTitle();
 
                 Console.WriteLine("For exit type '\\Q' or '\\q'");
                 string? inputText;
@@ -38,7 +49,7 @@ namespace ChatGrpc.Client.Host
                             break;
                         }
 
-                        await service.SendMessage(userName, inputText);
+                        await service.SendMessage(_userName, inputText);
                     }
                 }
                 //await service.Stop();
@@ -66,6 +77,66 @@ namespace ChatGrpc.Client.Host
 
             var loggerFactory = IoC.Services.GetRequiredService<ILoggerFactory>();
             loggerFactory.AddSerilog();
+        }
+
+        /// <summary>
+        /// Initialize connection
+        /// </summary>
+        private static async Task<InitializeResult> ConnectToServer(ChatGrpcClientService service)
+        {
+            var result = service.Initialize();
+            while (!result.IsSuccess)
+            {
+                Console.WriteLine($"Connection failed. Retry in {_clientConfig.ConnectionRetryTimeSeconds} sec");
+                await Task.Delay(_clientConfig.ConnectionRetryTimeSeconds * 1000);
+                result = service.Initialize();
+            }
+
+            Console.WriteLine("Connected to the server");
+            return result;
+        }
+
+        /// <summary>
+        /// Register User.
+        /// </summary>
+        private static async Task<string> RegisterUser(ChatGrpcClientService service)
+        {
+            string userName = string.Empty;
+            var result = new RegisterUserResponse { IsSuccess = false };
+            while (!result.IsSuccess)
+            {
+                userName = GetUserName();
+                result = await service.RegisterUser(userName);
+                if (!result.IsSuccess)
+                {
+                    Console.WriteLine($"User name {userName} already registered");
+                }
+            }
+            return userName;
+        }
+
+        private static void ChangeConsoleTitle()
+        {
+            string newTitle = "Chat: ";
+
+            if (!string.IsNullOrWhiteSpace(_consoleConfig?.Title))
+                newTitle = _consoleConfig.Title;
+
+            if (!string.IsNullOrWhiteSpace(_userName))
+                newTitle += _userName;
+
+            Console.Title = newTitle;
+        }
+
+        private static string GetUserName() 
+        {
+            string userName = string.Empty;
+            while (string.IsNullOrWhiteSpace(userName))
+            {
+                Console.WriteLine("Enter user name:");
+                userName = Console.ReadLine();
+            }
+            return userName;
         }
     }
 }

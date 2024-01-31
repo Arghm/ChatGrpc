@@ -1,10 +1,11 @@
-﻿using System;
+﻿using ChatGrpc.Client.App.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ChatGrpc.Client.App.Services
+namespace ChatGrpc.Client.ConsoleHost.Services
 {
     /// <summary>
     /// Console output of incomig messages.
@@ -35,7 +36,7 @@ namespace ChatGrpc.Client.App.Services
                 // user continue writing in the next line
                 Console.SetCursorPosition(left, top + 1);
             }
-            else 
+            else
                 Console.WriteLine(message);
         }
     }
