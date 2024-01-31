@@ -3,17 +3,7 @@ using Grpc.Net.Client;
 using ChatGrpc.Client.App.Services;
 using ChatGrpcClient.Entities;
 using ChatGrpcServiceApp;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using ChatGrpc.Client.App.Entities;
-using Microsoft.Win32;
 
 namespace ChatGrpcClient.Services
 {
@@ -22,7 +12,6 @@ namespace ChatGrpcClient.Services
     /// </summary>
     public class ChatGrpcClientService : Chatter.ChatterClient, IAsyncDisposable
     {
-        private readonly ILogger<ChatGrpcClientService> _logger;
         private readonly GrpcClientSettings _config;
         private readonly IIncomingMessageProcessService _incomingMessageService;
 
@@ -32,33 +21,31 @@ namespace ChatGrpcClient.Services
         private Chatter.ChatterClient _client;
         private AsyncDuplexStreamingCall<StreamOutMessage, StreamIncMessage> _asyncDuplexStreamingCall;
         private bool _isReponseReaderInitialized = false;
-        private string _token;
 
         public bool IsReaderInitialized => _isReponseReaderInitialized;
 
         public ChatGrpcClientService(
             IOptions<GrpcClientSettings> options,
-            IIncomingMessageProcessService incomingMessageService,
-            ILogger<ChatGrpcClientService> logger)
+            IIncomingMessageProcessService incomingMessageService)
         {
             _config = options?.Value ?? throw new ArgumentNullException(nameof(options));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _incomingMessageService = incomingMessageService ?? throw new ArgumentNullException(nameof(incomingMessageService));
         }
 
         /// <summary>
-        /// Initialize connection for user.
+        /// Initialize connection for user
         /// </summary>
-        public InitializeResult Initialize()
+        /// <returns>True if success</returns>
+        public bool TryInitialize()
         {
             // Обработка ответов вынесена в отдельный поток
             if (_isReponseReaderInitialized)
-                return new InitializeResult { IsSuccess = true };
+                return true;
 
             _client = GetChatterClient();
             _asyncDuplexStreamingCall = _client.MessangerProcess();
-
-            return new InitializeResult { IsSuccess = true };
+            _isReponseReaderInitialized = true;
+            return true;
         }
 
         /// <summary>
@@ -72,12 +59,11 @@ namespace ChatGrpcClient.Services
                 return new RegisterUserResponse { IsSuccess = false, RegisterMessage = "Name cannot be empty" };
 
             var register = await _client.RegisterUserAsync(new RegisterUserRequest { Username = userName });
-            _token = register.Token;
 
             return register;
         }
 
-        public Task Start(string userName)
+        public void Start()
         {
             Task readTask = Task.Run(async () =>
             {
@@ -87,8 +73,6 @@ namespace ChatGrpcClient.Services
                 }
             });
             _isReponseReaderInitialized = true;
-
-            return SendMessage(userName, $"{userName} joined chat", true);
         }
 
         /// <summary>
@@ -96,21 +80,15 @@ namespace ChatGrpcClient.Services
         /// </summary>
         public async Task Stop()
         {
-            await _incomingMessageService.ProcessIncomingMessage("Client destroyed");
             await _asyncDuplexStreamingCall.RequestStream.CompleteAsync();
+            _isReponseReaderInitialized = false;
             _channel?.Dispose();
             _disposed = true;
         }
 
-        public Task SendMessage(string userName, string message)
+        public Task SendMessage(StreamOutMessage outMessage)
         {
-            return SendMessage(userName, message, false);
-        }
-
-        public Task SendMessage(string userName, string message, bool isServerMessage)
-        {
-            StreamOutMessage reqMessage = new StreamOutMessage { Username = userName, Content = message, Token = _token, IsServerMessage = isServerMessage };
-            return _asyncDuplexStreamingCall.RequestStream.WriteAsync(reqMessage);
+            return _asyncDuplexStreamingCall.RequestStream.WriteAsync(outMessage);
         }
 
         private GrpcChannel GetGrpcChannel()

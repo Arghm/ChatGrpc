@@ -1,17 +1,13 @@
-﻿using ChatGrpc.Server.Host.Entities;
-using ChatGrpcServiceApp;
+﻿using ChatGrpcServiceApp;
 using static ChatGrpc.Server.Host.Services.MessageEventService;
 
 namespace ChatGrpc.Server.Host.Services
 {
     public class ProcessMessageService : IProcessMessageService
     {
-        private readonly ILogger<ProcessMessageService> _logger;
         private readonly MessageEventService _messageEventService;
-        public ProcessMessageService(ILogger<ProcessMessageService> logger, 
-            MessageEventService messageEventService)
+        public ProcessMessageService(MessageEventService messageEventService)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _messageEventService = messageEventService ?? throw new ArgumentNullException(nameof(messageEventService));
         }
 

@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ChatGrpc.Client.App.Services
+﻿namespace ChatGrpc.Client.App.Services
 {
     /// <summary>
-    /// Service for processing (print/log) incoming messages.
+    /// Service for processing incoming messages (print/log etc).
     /// </summary>
     public interface IIncomingMessageProcessService
     {

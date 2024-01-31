@@ -1,6 +1,4 @@
-using Google.Protobuf;
 using Grpc.Core;
-using ChatGrpc.Server.Host;
 using ChatGrpc.Server.Host.Entities;
 using ChatGrpcServiceApp;
 
@@ -32,7 +30,7 @@ public class ChatterService : Chatter.ChatterBase
     IServerStreamWriter<StreamIncMessage> responseStream,
     ServerCallContext context)
     {
-        // считываем вход€щие сообщени€ в фоновой задаче
+        // read incoming stream
         var readTask = Task.Run(async () =>
         {
             await foreach (StreamOutMessage message in requestStream.ReadAllAsync())
@@ -46,7 +44,7 @@ public class ChatterService : Chatter.ChatterBase
         _responseStream = responseStream;
         _isResponseReady = true;
 
-        // ожидаем завершени€ задачи чтени€/отправки
+        // wait readTask to complete
         try
         {
             await readTask;
@@ -100,7 +98,6 @@ public class ChatterService : Chatter.ChatterBase
 
     private Task UserLeftChat()
     {
-        //_messageEventService.Broadcast -= SendResponseToClient;
         _messageService.UnsubscribeUser(SendResponseToClient);
         UnregisterUser();
 
@@ -114,7 +111,6 @@ public class ChatterService : Chatter.ChatterBase
 
     private void UserJoinChat()
     {
-        //_messageEventService.Broadcast += SendResponseToClient;
         _messageService.SubscribeUser(SendResponseToClient);
     }
 

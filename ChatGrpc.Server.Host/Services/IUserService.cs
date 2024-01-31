@@ -1,5 +1,4 @@
 ﻿using ChatGrpc.Server.Host.Entities;
-using static ChatGrpc.Server.Host.Services.MessageEventService;
 
 namespace ChatGrpc.Server.Host.Services
 {

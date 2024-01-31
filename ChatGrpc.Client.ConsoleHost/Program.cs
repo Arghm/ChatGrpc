@@ -1,7 +1,7 @@
-﻿using ChatGrpc.Client.App.Entities;
+﻿using ChatGrpc.Client.App.Contracts;
+using ChatGrpc.Client.App.Entities;
+using ChatGrpc.Client.ConsoleHost.Entities;
 using ChatGrpcClient.Entities;
-using ChatGrpcClient.Services;
-using ChatGrpcServiceApp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,8 +13,9 @@ namespace ChatGrpc.Client.Host
     internal class Program
     {
         static string _userName = string.Empty;
-        static ConsolePrefs _consoleConfig;
+        static ConsoleSettings _consoleConfig;
         static GrpcClientSettings _clientConfig;
+        private static IChatterClient _chatterClient;
 
         public static async Task Main(string[] args)
         {
@@ -23,43 +24,42 @@ namespace ChatGrpc.Client.Host
             ConfigureLogger();
 
             // get configs
-            _consoleConfig = IoC.Services.GetService<IOptions<ConsolePrefs>>()?.Value ?? throw new ArgumentNullException(nameof(IOptions<ConsolePrefs>));
+            _consoleConfig = IoC.Services.GetService<IOptions<ConsoleSettings>>()?.Value ?? throw new ArgumentNullException(nameof(IOptions<ConsoleSettings>));
             _clientConfig = IoC.Services.GetService<IOptions<GrpcClientSettings>>()?.Value ?? throw new ArgumentNullException(nameof(IOptions<GrpcClientSettings>));
+            _chatterClient = IoC.Services.GetService<IChatterClient>() ?? throw new ArgumentNullException(nameof(IChatterClient));
+
+            Console.Title = _consoleConfig.Title;
+
+            await ConnectToServer();
+            _userName = await RegisterUser();
+            await _chatterClient.Start(_userName);
+
             ChangeConsoleTitle();
 
-            await using (ChatGrpcClientService service = IoC.Services.GetService<ChatGrpcClientService>() ?? throw new ArgumentNullException(nameof(ChatGrpcClientService)))
+            Console.WriteLine("For exit type '\\Q' or '\\q'");
+            string? inputText;
+            while (true)
             {
-                await ConnectToServer(service);
-                _userName = await RegisterUser(service);
-                await service.Start(_userName);
-
-                ChangeConsoleTitle();
-
-                Console.WriteLine("For exit type '\\Q' or '\\q'");
-                string? inputText;
-                while (true)
+                inputText = Console.ReadLine();
+                //place cursor on the beginning of line to rewrite message by server answer
+                Console.SetCursorPosition(0, Console.CursorTop - 1); 
+                if (!string.IsNullOrWhiteSpace(inputText))
                 {
-                    inputText = Console.ReadLine();
-                    //place cursor on the beginning of line to rewrite message by server answer
-                    Console.SetCursorPosition(0, Console.CursorTop - 1); 
-                    if (!string.IsNullOrWhiteSpace(inputText))
+                    if (inputText.ToUpper() == "\\Q")
                     {
-                        if (inputText.ToUpper() == "\\Q")
-                        {
-                            break;
-                        }
-
-                        await service.SendMessage(_userName, inputText);
+                        break;
                     }
+
+                    await _chatterClient.SendMessage(_userName, inputText);
                 }
-                //await service.Stop();
             }
+            await _chatterClient.Stop();
+
             Console.WriteLine("Shutdown...");
         }
 
         public static IConfiguration Configure()
         {
-            var t = Directory.GetCurrentDirectory();
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json");
@@ -82,34 +82,31 @@ namespace ChatGrpc.Client.Host
         /// <summary>
         /// Initialize connection
         /// </summary>
-        private static async Task<InitializeResult> ConnectToServer(ChatGrpcClientService service)
+        private static async Task ConnectToServer()
         {
-            var result = service.Initialize();
-            while (!result.IsSuccess)
+            while (!_chatterClient.TryInitialize())
             {
                 Console.WriteLine($"Connection failed. Retry in {_clientConfig.ConnectionRetryTimeSeconds} sec");
                 await Task.Delay(_clientConfig.ConnectionRetryTimeSeconds * 1000);
-                result = service.Initialize();
             }
 
             Console.WriteLine("Connected to the server");
-            return result;
         }
 
         /// <summary>
         /// Register User.
         /// </summary>
-        private static async Task<string> RegisterUser(ChatGrpcClientService service)
+        private static async Task<string> RegisterUser()
         {
             string userName = string.Empty;
-            var result = new RegisterUserResponse { IsSuccess = false };
+            var result = new RegisterUserResult { IsSuccess = false };
             while (!result.IsSuccess)
             {
                 userName = GetUserName();
-                result = await service.RegisterUser(userName);
+                result = await _chatterClient.RegisterUser(userName);
                 if (!result.IsSuccess)
                 {
-                    Console.WriteLine($"User name {userName} already registered");
+                    Console.WriteLine(result.RegisterMessage);
                 }
             }
             return userName;
